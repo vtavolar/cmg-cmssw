@@ -6,7 +6,8 @@ from PhysicsTools.HeppyCore.utils.deltar import *
 class JetReCalibrator:
     def __init__(self,globalTag,jetFlavour,doResidualJECs,jecPath,upToLevel=3,
                  calculateSeparateCorrections=False,
-                 calculateType1METCorrection=False, type1METParams={'jetPtThreshold':15., 'skipEMfractionThreshold':0.9, 'skipMuons':True} ):
+                 calculateType1METCorrection=False, type1METParams={'jetPtThreshold':15., 'skipEMfractionThreshold':0.9, 'skipMuons':True}, 
+                 fixEE17Params={'jetPtThresh_EEFix':50., 'jetEta_min':2.65, 'jetEta_max':3.139 }	):
         """Create a corrector object that reads the payloads from the text dumps of a global tag under
             CMGTools/RootTools/data/jec  (see the getJec.py there to make the dumps).
            It will apply the L1,L2,L3 and possibly the residual corrections to the jets.
@@ -18,6 +19,7 @@ class JetReCalibrator:
         self.upToLevel = upToLevel
         self.calculateType1METCorr = calculateType1METCorrection
         self.type1METParams  = type1METParams
+        self.fixEE17Params   = fixEE17Params
         # Make base corrections
         path = os.path.expandvars(jecPath) #"%s/src/CMGTools/RootTools/data/jec" % os.environ['CMSSW_BASE'];
         self.L1JetPar  = ROOT.JetCorrectorParameters("%s/%s_L1FastJet_%s.txt" % (path,globalTag,jetFlavour),"");
@@ -129,31 +131,35 @@ class JetReCalibrator:
             return False
         newpt = jet.pt()*raw*corr
         if newpt > self.type1METParams['jetPtThreshold']:
-            rawP4forT1 = self.rawP4forType1MET_(jet)
-            if rawP4forT1 and rawP4forT1.Pt()*corr > self.type1METParams['jetPtThreshold']:
-                metShift[0] -= rawP4forT1.Px() * (corr - 1.0/raw)
-                metShift[1] -= rawP4forT1.Py() * (corr - 1.0/raw)
-                if self.calculateType1METCorr:
-                    l1corr = self.getCorrection(jet,rho,delta=0,corrector=self.separateJetCorrectors["L1"])
-                    #print "\tfor jet with raw pt %.5g, eta %.5g, dpx = %.5g, dpy = %.5g" % (
-                    #            jet.pt()*raw, jet.eta(), 
-                    #            rawP4forT1.Px()*(corr - l1corr), 
-                    #            rawP4forT1.Py()*(corr - l1corr))
-                    type1METCorr[0] -= rawP4forT1.Px() * (corr - l1corr) 
-                    type1METCorr[1] -= rawP4forT1.Py() * (corr - l1corr) 
-                    type1METCorr[2] += rawP4forT1.Et() * (corr - l1corr) 
+            if (newpt > self.fixEE17Params['jetPtThresh_EEFix'] or abs(jet.eta())< self.fixEE17Params['jetEta_min'] or abs(jet.eta())>self.fixEE17Params['jetEta_max']): 
+                rawP4forT1 = self.rawP4forType1MET_(jet)
+                if rawP4forT1 and rawP4forT1.Pt()*corr > self.type1METParams['jetPtThreshold']:           
+                    metShift[0] -= rawP4forT1.Px() * (corr - 1.0/raw)
+                    metShift[1] -= rawP4forT1.Py() * (corr - 1.0/raw)
+
+                    if self.calculateType1METCorr:
+                        l1corr = self.getCorrection(jet,rho,delta=0,corrector=self.separateJetCorrectors["L1"])
+                        #print "\tfor jet with raw pt %.5g, eta %.5g, dpx = %.5g, dpy = %.5g" % (
+                        #            jet.pt()*raw, jet.eta(), 
+                        #            rawP4forT1.Px()*(corr - l1corr), 
+                        #            rawP4forT1.Py()*(corr - l1corr))
+                        type1METCorr[0] -= rawP4forT1.Px() * (corr - l1corr) 
+                        type1METCorr[1] -= rawP4forT1.Py() * (corr - l1corr) 
+                        type1METCorr[2] += rawP4forT1.Et() * (corr - l1corr) 
         jet.setCorrP4(jet.p4() * (corr * raw))
         return True
 
-    def correctAll(self,jets,rho,delta=0, addCorr=False, addShifts=False, metShift=None, type1METCorr=None):
+    def correctAll(self,jets ,rho,delta=0, addCorr=False, addShifts=False, metShift=None, type1METCorr=None):
         """Applies 'correct' to all the jets, discard the ones that have bad corrections (corrected pt <= 0)"""
         if not metShift:
             metShift = [0,0]
         if not type1METCorr:
             type1METCorr = [0,0,0]
+        badJets_METRec17 = []
+        goodJets_METRec17 = []
         badJets = []
         if metShift     != [0.,0.   ]: raise RuntimeError("input metShift tuple is not initialized to zeros")
-        if type1METCorr != [0.,0.,0.]: raise RuntimeError("input type1METCorr tuple is not initialized to zeros")
+        if type1METCorr != [0.,0.,0.]: raise RuntimeError("input type1METCorr tuple is not initialized to zeros")        
         for j in jets:
             ok = self.correct(j,rho,delta,addCorr=addCorr,addShifts=addShifts,metShift=metShift,type1METCorr=type1METCorr)
             if not ok: badJets.append(j)
@@ -168,29 +174,32 @@ class Type1METCorrector:
            old74XMiniAODs should be True if using inputs produced with CMSSW_7_4_11 or earlier."""
         self.oldMC = old74XMiniAODs
     def correct(self,met,type1METCorrections):
-        oldpx, oldpy = met.px(), met.py()
+        #oldpx, oldpy = met.px(), met.py()
         #print "old met: px %+10.5f, py %+10.5f" % (oldpx, oldpy)
         if self.oldMC:
             raw  = met.shiftedP2_74x(12,0);
             rawsumet =  met.shiftedSumEt_74x(12,0);
         else:
-            raw = met.uncorP2()
-            rawsumet =  met.uncorSumEt();
-        rawpx, rawpy = raw.px, raw.py
-        #print "raw met: px %+10.5f, py %+10.5f" % (rawpx, rawpy)
+            raw = met
+            #raw = met.uncorP2()
+            #rawsumet =  met.uncorSumEt();
+        rawpx = raw.px()
+        rawpy = raw.py()
+        print "The raw met uncor only with MET Recipe: px %+10.5f, py %+10.5f" % (rawpx, rawpy)
         corrpx = rawpx + type1METCorrections[0]
         corrpy = rawpy + type1METCorrections[1]
-        corrsumet = rawsumet  + type1METCorrections[2]
-        #print "done met: px %+10.5f, py %+10.5f\n" % (corrpx,corrpy)
-        met.setP4(ROOT.reco.Particle.LorentzVector(corrpx,corrpy,0,hypot(corrpx,corrpy)))
+        print "The corrected MET after the JEC is %+10.5f and %+10.5f" %(corrpx, corrpy)                    
+        corr_met_vector = ROOT.reco.Particle.LorentzVector(corrpx, corrpy, 0, hypot(corrpx, corrpy))
+        return corr_met_vector
+        
         ## workaround for missing setSumEt in reco::MET and pat::MET
-        met._sumEt = corrsumet
-        met.sumEt = types.MethodType(lambda myself : myself._sumEt, met, met.__class__) 
-        if not self.oldMC:
-            met.setCorShift(rawpx, rawpy, rawsumet, met.Raw)
-        else: 
-            # to avoid segfauls in pat::MET, I need a more ugly solution
-            setFakeRawMETOnOldMiniAODs(met, rawpx,rawpy, rawsumet)
+        #met._sumEt = corrsumet
+        #met.sumEt = types.MethodType(lambda myself : myself._sumEt, met, met.__class__) 
+        #if not self.oldMC:
+        #    met.setCorShift(rawpx, rawpy, rawsumet, met.Raw)
+        #else: 
+        #    # to avoid segfauls in pat::MET, I need a more ugly solution
+        #    setFakeRawMETOnOldMiniAODs(met, rawpx,rawpy, rawsumet)
 
 def setFakeRawMETOnOldMiniAODs(met, rawpx, rawpy, rawsumet):
         met._rawSumEt = rawsumet
