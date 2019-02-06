@@ -33,7 +33,7 @@ class METAnalyzer( Analyzer ):
         self.applyJetSmearing = cfg_comp.isMC and cfg_ana.applyJetSmearing
         self.old74XMiniAODs         = cfg_ana.old74XMiniAODs
         self.jetAnalyzerPostFix = getattr(cfg_ana, 'jetAnalyzerPostFix', '')
-        self.runFixEE   = True 
+        self.runFixMET2017EE = self.cfg_ana.runFixMET2017EE if hasattr(self.cfg_ana, 'runFixMET2017EE') else 0
         if self.recalibrateMET in [ "type1", True ]:
             if self.recalibrateMET == "type1":
                 self.type1METCorrector = Type1METCorrector(self.old74XMiniAODs)
@@ -323,11 +323,15 @@ class METAnalyzer( Analyzer ):
           if self.cfg_ana.doMetNoPU: self.metNoPU = self.handles['nopumet'].product()[0]         
         if self.recalibrateMET == "type1":
             type1METCorr = getattr(event, 'type1METCorr'+self.jetAnalyzerPostFix)
-            if self.runFixEE:
-                corr_raw_met = self.runFixEE2017(event)
-                self.met.setP4(self.type1METCorrector.correct(corr_raw_met, type1METCorr))
-            else:
-                self.type1METCorrector.correct(self.met, type1METCorr)
+            self.type1METCorrector.correct(self.met, type1METCorr)
+            if self.runFixMET2017EE:
+                type1METCorr_fix2017EE = getattr(event, 'type1METCorr_fix2017EE'+self.jetAnalyzerPostFix)
+                self.corr_raw_met = self.runFixEE2017(event)
+                ##correct MET
+                fixedpx = self.corr_raw_met.px + type1METCorr_fix2017EE[0]
+                fixedpy = self.corr_raw_met.py  type1METCorr_fix2017EE[01
+                setattr(event, "metFixEE2017"+self.cfg_ana.collectionPostFix, [fixedpx, fixedpy])
+        
                
            
         elif self.recalibrateMET == True:
@@ -432,6 +436,7 @@ class METAnalyzer( Analyzer ):
         event.taus = [p for p in self.handles['taus'].product()]
         event.electrons = [p for p in self.handles['electrons'].product()]
         pfcandidateClustered_ptcs = []
+        ##check that this is correct
         for ptc in event.electrons :
             for assPFcand in ptc.associatedPackedPFCandidates():
                 pfcandidateClustered_ptcs.append(assPFcand.get())
@@ -521,7 +526,6 @@ setattr(METAnalyzer,"defaultConfig", cfg.Analyzer(
     collectionPostFix = "",
     ## Add this for the correction
     ##metCollection = "pfmet",
-    runFixEE= True
 
     )
 )
