@@ -329,7 +329,7 @@ class METAnalyzer( Analyzer ):
                 self.corr_raw_met = self.runFixEE2017(event)
                 ##correct MET
                 fixedpx = self.corr_raw_met.px + type1METCorr_fix2017EE[0]
-                fixedpy = self.corr_raw_met.py  type1METCorr_fix2017EE[01
+                fixedpy = self.corr_raw_met.py + type1METCorr_fix2017EE[1]
                 setattr(event, "metFixEE2017"+self.cfg_ana.collectionPostFix, [fixedpx, fixedpy])
         
                
