@@ -21,8 +21,9 @@ class JetReCalibrator:
         self.jecPath = jecPath
         self.upToLevel = upToLevel
         self.calculateType1METCorr = calculateType1METCorrection
-        self.type1METParams  = type1METParams
-        self.fixEE17Params   = fixEE17Params
+        self.type1METParams = type1METParams
+        self.fixEE17Params  = fixEE17Params
+        self.fixMET2017EE   = fixMET2017EE
         # Make base corrections
         path = os.path.expandvars(jecPath) #"%s/src/CMGTools/RootTools/data/jec" % os.environ['CMSSW_BASE'];
         self.L1JetPar  = ROOT.JetCorrectorParameters("%s/%s_L1FastJet_%s.txt" % (path,globalTag,jetFlavour),"");
@@ -189,12 +190,10 @@ class Type1METCorrector:
         """Object to apply type1 corrections computed by the JetReCalibrator to the MET.
            old74XMiniAODs should be True if using inputs produced with CMSSW_7_4_11 or earlier."""
         self.oldMC = old74XMiniAODs
-        self.runFixMET2017 = runFixMET2017EE
-        if self.oldMC and self.runFixMET2017: raise RuntimeError("Incompatible options in Type1METCorrector.")
     def correct(self,met,type1METCorrections):
         #oldpx, oldpy = met.px(), met.py()
         #print "old met: px %+10.5f, py %+10.5f" % (oldpx, oldpy)
-        elif self.oldMC:
+        if self.oldMC:
             raw  = met.shiftedP2_74x(12,0);
             rawsumet =  met.shiftedSumEt_74x(12,0);
         else:
@@ -209,7 +208,6 @@ class Type1METCorrector:
         #print "done met: px %+10.5f, py %+10.5f\n" % (corrpx,corrpy)
         met.setP4(ROOT.reco.Particle.LorentzVector(corrpx,corrpy,0,hypot(corrpx,corrpy)))
         ## workaround for missing setSumEt in reco::MET and pat::MET
-        ##what happens with suEt if runFixMET2017?
         met._sumEt = corrsumet
         met.sumEt = types.MethodType(lambda myself : myself._sumEt, met, met.__class__) 
         if not self.oldMC:
